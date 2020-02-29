@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Suicides Rate</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="style/dc.css"/>
+    <link rel="stylesheet" href="style/custom.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+</head>
+<body>
+
+  <div class="container" style="margin-top:50px;">
+      <div class="row">
+          <div  class="col-sm-6">
+              <div id="age-ring-chart" width="100%">
+                  <h5>Pie chart representing suicide rate by age</h5>
+                  <!-- <div class="reset" style="visibility: hidden;">selected: <span class="filter"></span>
+                      <a href="javascript:ageRingChart.filterAll();dc.redrawAll();">reset</a>
+                  </div> -->
+              </div>
+
+              <div id="generation-ring-chart" width="100%" style="margin-top:-70px;">
+                  <h5>Pie chart representing suicide rate by generation</h5>
+                  <!-- <div class="reset" style="visibility: hidden;">selected: <span class="filter"></span>
+                      <a href="javascript:generationRingChart.filterAll();dc.redrawAll();">reset</a>
+                  </div> -->
+              </div>
+          </div>
+
+
+          <div id="chart-row-suicides" class="col-sm-6">
+            <h5>Row chart representing suicide rate by top 16 countries</h5>
+              <div id="radios">
+              <label class="container">    .. Descending
+                  <input type="radio" checked="checked" name="radio" id="radio1" value=1>
+                  <span class="checkmark"></span>
+              </label>
+              <label class="container">      .. Ascending
+                  <input type="radio" name="radio" id="radio2" value=0>
+                  <span class="checkmark"></span>
+              </label>
+              </div>
+              <div class="reset" style="visibility: hidden;">selected: <span class="filter"></span>
+                  <a href="javascript:suicidesRowChart.filterAll();dc.redrawAll();">reset</a>
+              </div>
+          </div>
+
+          <div>
+            <div id="chart-line-year"  class="col-sm-6">
+                <h5>Bar chart representing suicide rate by year</h5>
+                <div class="reset" style="visibility: hidden;">range: <span class="filter"></span>
+                    <a href="javascript:yearChart.filterAll();dc.redrawAll();">reset</a>
+                </div>
+            </div>
+            <div id="gender-ring-chart"  class="col-sm-6" style="padding-left:60px;">
+              <h5>Row chart representing the suicide rate by gender</h5>
+              <!-- <div class="reset" style="visibility: hidden;">range: <span class="filter"></span>
+                  <a href="javascript:genderRingChart.filterAll();dc.redrawAll();">reset</a>
+              </div> -->
+            </div>
+          </div>
+
+
+      </div>
+  </div>
+    <script type="text/javascript" src="lib/d3.js"></script>
+    <script type="text/javascript" src="lib/crossfilter.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script type="text/javascript" src="lib/dc.js"></script>
+    <script type="text/javascript">
+
+    // SAMPLE OF DATASET
+
+    // country,year,sex,age,suicidesNumber,population,suicidesPercentage,HDI for year,gdpYear,gdbCapita,generation
+    // Albania,1987,male,15-24 years,21,312900,6.71,,"2,156,624,900",796,Generation X
+    // Albania,1987,male,35-54 years,16,308000,5.19,,"2,156,624,900",796,Silent
+    // Albania,1987,female,15-24 years,14,289700,4.83,,"2,156,624,900",796,Generation X
+    // Albania,1987,male,75+ years,1,21800,4.59,,"2,156,624,900",796,G.I. Generation
+    // Albania,1987,male,25-34 years,9,274300,3.28,,"2,156,624,900",796,Boomers
+    // Albania,1987,female,75+ years,1,35600,2.81,,"2,156,624,900",796,G.I. Generation
+    // Albania,1987,female,35-54 years,6,278800,2.15,,"2,156,624,900",796,Silent
+    // Albania,1987,female,25-34 years,4,257200,1.56,,"2,156,624,900",796,Boomers
+    // Albania,1987,male,55-74 years,1,137500,0.73,,"2,156,624,900",796,G.I. Generation
+    // Albania,1987,female,5-14 years,0,311000,0,,"2,156,624,900",796,Generation
+
+
+        // RadioButtons for RowChart
+        var asceding=1;
+        loadRowChart();
+        $("#radio1").click(function(){
+            if (document.getElementById('radio1').checked) {
+                asceding = document.getElementById('radio1').value;
+                loadRowChart();
+            }
+        });
+
+        $("#radio2").click(function(){
+            if (document.getElementById('radio2').checked) {
+                asceding = document.getElementById('radio2').value;
+                loadRowChart();
+            }
+        });
+
+
+
+        // Chart Variables creation
+        var ageRingChart   = dc.pieChart("#age-ring-chart"),
+            generationRingChart = dc.pieChart("#generation-ring-chart"),
+            yearChart  = dc.barChart("#chart-line-year"),
+            suicidesRowChart = dc.rowChart("#chart-row-suicides"),
+            genderRingChart = dc.pieChart("#gender-ring-chart");
+
+
+
+
+        function loadRowChart() {
+
+
+        // CSV Reader
+        d3.csv("dataset/master.csv").then(function (data) {
+
+            // Convert suicidesPercentage field from string into float
+            data.forEach(function (d) {
+                d.suicidesPercentage = +d.suicidesPercentage;
+            });
+
+
+            // Three functions for custom reduction (in this case we want to reduce Average)
+            function reduceAddAvg(p, v) {
+                ++p.count
+                p.sum += v.suicidesPercentage;
+                p.avg = p.sum / p.count;
+                return p;
+            }
+
+            function reduceRemoveAvg(p, v) {
+                --p.count
+                p.sum -= v.suicidesPercentage;
+                p.avg = p.count ? p.sum / p.count : 0;
+                return p;
+            }
+
+            function reduceInitAvg() {
+                return {count: 0, sum: 0, avg: 0};
+            }
+
+
+            // Ordering Function for Rocharts
+            function orderValue(p) {
+                if (asceding == 1) {
+                    return +p.avg;
+                } else {
+                    return -p.avg;
+                }
+            }
+
+
+            // Crossfilter
+            var ndx = crossfilter(data);
+
+
+            // Dimensions
+            var countryDim = ndx.dimension(function (d) {return d.country;})
+
+            var yearDim = ndx.dimension(function (d) {return new Date(d.year);});
+
+            var ageDim = ndx.dimension(function (d) {return d.age});
+
+            var generationDim = ndx.dimension(function (d) {return d.generation});
+
+            var genderDim = ndx.dimension(function (d){return d.sex});
+
+            // Groups based on AVG of suicidesPercentage
+            var ratesPerYear = yearDim.group().reduce(reduceAddAvg,
+              reduceRemoveAvg, reduceInitAvg);
+            var ratesPerGeneration = generationDim.group().reduce(reduceAddAvg,
+               reduceRemoveAvg, reduceInitAvg);
+            var ratesPerAge = ageDim.group().reduce(reduceAddAvg,
+              reduceRemoveAvg, reduceInitAvg);
+            var ratesPerGender = genderDim.group().reduce(reduceAddAvg,
+              reduceRemoveAvg, reduceInitAvg);
+            var ratesPerCountry = countryDim.group().reduce(reduceAddAvg,
+              reduceRemoveAvg, reduceInitAvg).order(orderValue);
+
+
+
+            // Charts customization
+            ageRingChart
+                .width(500)
+                .height(450)
+                .slicesCap(6)
+                .innerRadius(50)
+                .externalLabels(6)
+                .externalRadiusPadding(100)
+                .drawPaths(true)
+                .dimension(ageDim)
+                .controlsUseVisibility(true)
+                .on('pretransition', function(chart) {
+                    chart.selectAll('text.pie-slice').text(function(d) {
+                      if (dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) != 0){
+                        return d.data.key + ' ' + dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) + '%';}
+                    })
+                })
+                .group(ratesPerAge).valueAccessor(function (d) {
+                return d.value.avg
+            })
+                .legend(dc.legend());
+
+            generationRingChart
+                .width(500)
+                .height(450)
+                .slicesCap(6)
+                .innerRadius(50)
+                .externalLabels(6)
+                .externalRadiusPadding(100)
+                .drawPaths(true)
+                .on('pretransition', function(chart) {
+                    chart.selectAll('text.pie-slice').text(function(d) {
+                        if (dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) != 0){
+                        return d.data.key + ' ' + dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) + '%';}
+                    })
+                })
+                .dimension(generationDim)
+                .group(ratesPerGeneration).valueAccessor(function (d) {
+                return d.value.avg
+            })
+                .legend(dc.legend());
+
+
+
+                genderRingChart
+                    .width(500)
+                    .height(450)
+                    .slicesCap(2)
+                    .innerRadius(50)
+                    .externalLabels(6)
+                    .on('pretransition', function(chart) {
+                        chart.selectAll('text.pie-slice').text(function(d) {
+                          if (dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) != 0){
+                            return d.data.key + ' ' + dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) + '%';}
+                        })
+                    })
+                    .externalRadiusPadding(100)
+                    .drawPaths(true)
+                    .dimension(genderDim)
+                    .group(ratesPerGender).valueAccessor(function (d) {
+                    return d.value.avg
+                })
+                    .legend(dc.legend());
+
+            yearChart
+                .width(600)
+                .height(400)
+                .dimension(yearDim)
+                .group(ratesPerYear).valueAccessor(function (d) {
+                return d.value.avg;
+            })
+                .x(d3.scaleTime().domain([new Date("January 1, 1987 00:00"), new Date("January 4, 2015 00:00:00")]))
+                .elasticY(true)
+                .controlsUseVisibility(true)
+                .yAxisLabel("Rates over 100k people")
+                .xAxisLabel("Year")
+                .xUnits(function(){return ratesPerYear.all().length;})
+                .elasticX(true)
+                .centerBar(true);
+
+                suicidesRowChart
+                    .dimension(countryDim)
+                    .data(function (group) {
+                        return group.top(16)
+                    })
+                    .elasticX(true)
+                    .controlsUseVisibility(true)
+                    .width(700)
+                    .height(700)
+                    .group(ratesPerCountry).valueAccessor(function (d) {
+                    return d.value.avg;
+                });
+
+
+            // function to handle empy charts
+            function show_empty_message(chart) {
+                var is_empty = d3.sum(chart.group().all().map(chart.valueAccessor())) === 0;
+                var data = is_empty ? [1] : [];
+                var empty = chart.svg().selectAll('.empty-message').data(data);
+                empty.exit().remove();
+                empty = empty
+                    .enter()
+                    .append('text')
+                    .text('NO DATA!')
+                    .attr('text-anchor', 'middle')
+                    .attr('alignment-baseline', 'middle')
+                    .attr('class', 'empty-message')
+                    .attr('x', chart.margins().left + chart.effectiveWidth() / 2)
+                    .attr('y', chart.margins().top + chart.effectiveHeight() / 2)
+                    .style('opacity', 0)
+                    .merge(empty);
+                empty.transition().duration(1000).style('opacity', 1);
+            }
+
+            suicidesRowChart.on('pretransition', show_empty_message);
+            yearChart.on('pretransition', show_empty_message);
+            dc.renderAll();
+
+        });
+      }
+
+
+    </script>
+</div>
+</body>
+</html>
